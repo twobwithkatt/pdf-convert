@@ -1,0 +1,7 @@
+PySide6-Essentials>=6.5.0
+pymupdf>=1.23.0
+opencv-python-headless>=4.8.0
+pytesseract>=0.3.10
+numpy>=1.24.0
+pyinstaller>=6.0.0
+# easyocr>=1.7.0  # Tùy chọn nếu muốn dùng Deep Learning OCR

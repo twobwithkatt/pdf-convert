@@ -1,0 +1,236 @@
+/* 
+   Modern & Clean QSS Theme for PDF Serial Scanner & Batch Renamer
+   Targeted for Mac & Windows
+*/
+
+QMainWindow {
+    background-color: #F8FAFC;
+}
+
+QWidget {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    color: #1E293B;
+}
+
+/* Card Containers / GroupBoxes */
+QGroupBox {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    margin-top: 12px;
+    padding-top: 18px;
+    padding-bottom: 12px;
+    padding-left: 14px;
+    padding-right: 14px;
+    font-weight: bold;
+    font-size: 13px;
+    color: #0F172A;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 16px;
+    padding: 0 6px;
+    background-color: #FFFFFF;
+    color: #2563EB;
+}
+
+/* Push Buttons */
+QPushButton {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 7px 16px;
+    font-weight: 600;
+    color: #334155;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background-color: #F1F5F9;
+    border-color: #94A3B8;
+    color: #0F172A;
+}
+
+QPushButton:pressed {
+    background-color: #E2E8F0;
+}
+
+QPushButton:disabled {
+    background-color: #F8FAFC;
+    border-color: #E2E8F0;
+    color: #94A3B8;
+}
+
+/* Primary Button (Start) */
+QPushButton#btn_start {
+    background-color: #2563EB;
+    border: 1px solid #1D4ED8;
+    color: #FFFFFF;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 9px 22px;
+    border-radius: 8px;
+}
+
+QPushButton#btn_start:hover {
+    background-color: #1D4ED8;
+    border-color: #1E40AF;
+}
+
+QPushButton#btn_start:pressed {
+    background-color: #1E40AF;
+}
+
+QPushButton#btn_start:disabled {
+    background-color: #93C5FD;
+    border-color: #93C5FD;
+    color: #EFF6FF;
+}
+
+/* Pause Button */
+QPushButton#btn_pause {
+    background-color: #F59E0B;
+    border: 1px solid #D97706;
+    color: #FFFFFF;
+    font-weight: bold;
+    border-radius: 8px;
+    padding: 9px 18px;
+}
+
+QPushButton#btn_pause:hover {
+    background-color: #D97706;
+}
+
+/* Cancel Button */
+QPushButton#btn_cancel {
+    background-color: #EF4444;
+    border: 1px solid #DC2626;
+    color: #FFFFFF;
+    font-weight: bold;
+    border-radius: 8px;
+    padding: 9px 18px;
+}
+
+QPushButton#btn_cancel:hover {
+    background-color: #DC2626;
+}
+
+/* Line Edit & ComboBox */
+QLineEdit {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #1E293B;
+}
+
+QLineEdit:focus {
+    border: 1.5px solid #2563EB;
+    background-color: #FFFFFF;
+}
+
+QComboBox {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #1E293B;
+    font-weight: 500;
+}
+
+QComboBox:focus {
+    border-color: #2563EB;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 24px;
+}
+
+/* Checkbox */
+QCheckBox {
+    spacing: 8px;
+    font-weight: 500;
+    color: #334155;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 4px;
+    background-color: #FFFFFF;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #2563EB;
+    border-color: #2563EB;
+    image: none; /* Qt default checkmark will be drawn */
+}
+
+/* Table View */
+QTableWidget {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    gridline-color: #F1F5F9;
+    selection-background-color: #EFF6FF;
+    selection-color: #1E293B;
+}
+
+QHeaderView::section {
+    background-color: #F1F5F9;
+    color: #475569;
+    padding: 8px 10px;
+    font-weight: bold;
+    border: none;
+    border-bottom: 1.5px solid #CBD5E1;
+}
+
+QTableWidget::item {
+    padding: 6px;
+}
+
+/* Progress Bar */
+QProgressBar {
+    border: 1px solid #E2E8F0;
+    border-radius: 7px;
+    text-align: center;
+    background-color: #E2E8F0;
+    height: 18px;
+    font-weight: bold;
+    font-size: 11px;
+    color: #1E293B;
+}
+
+QProgressBar::chunk {
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3B82F6, stop:1 #1D4ED8);
+    border-radius: 6px;
+}
+
+/* Drag & Drop Zone Box */
+QFrame#drop_frame {
+    background-color: #F8FAFC;
+    border: 2px dashed #94A3B8;
+    border-radius: 10px;
+    padding: 16px;
+}
+
+QFrame#drop_frame:hover {
+    background-color: #EFF6FF;
+    border-color: #3B82F6;
+}
+
+/* Logs / Status Box */
+QTextEdit#log_box {
+    background-color: #0F172A;
+    color: #E2E8F0;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+    font-size: 12px;
+    padding: 8px;
+}
