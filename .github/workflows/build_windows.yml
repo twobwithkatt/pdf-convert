@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -43,3 +46,17 @@ jobs:
       with:
         name: PDFSerialRenamer-Windows-x64
         path: dist/PDFSerialRenamer.exe
+
+    - name: Create or Update Public GitHub Release
+      uses: softprops/action-gh-release@v2
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      with:
+        tag_name: latest
+        name: "PDF Serial Renamer v1.0 (Windows Standalone)"
+        body: |
+          ### 🚀 Phiên bản PDF Serial Renamer tự động cho Windows
+          - Tải trực tiếp file `PDFSerialRenamer.exe` bên dưới về máy Windows để sử dụng ngay.
+          - Đã tích hợp sẵn OCR, không cần cài đặt thêm bất kỳ phần mềm nào.
+        files: dist/PDFSerialRenamer.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
