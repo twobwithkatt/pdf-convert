@@ -34,6 +34,7 @@ class MainWindow(QMainWindow):
         self.file_set: Set[str] = set()
         self.output_directory: str = ""
         self.worker: ScanWorker = None
+        self.batch_completed: bool = False
 
         self._setup_ui()
         self._load_stylesheet()
@@ -233,12 +234,15 @@ class MainWindow(QMainWindow):
                             paths.append(os.path.join(root, f))
         self._add_files_to_list(paths)
 
-    # ---------------- FILE & FOLDER HANDLERS ----------------
     def _on_choose_files(self):
         files, _ = QFileDialog.getOpenFileNames(
             self, "Chọn các file PDF cần quét", "", "PDF Files (*.pdf)"
         )
         if files:
+            # Nếu đợt quét trước đã xong, tự động làm mới để bắt đầu đợt 500 file mới
+            if self.batch_completed:
+                self._on_clear_files()
+                self.batch_completed = False
             self._add_files_to_list(files)
 
     def _on_choose_folder(self):
@@ -249,9 +253,17 @@ class MainWindow(QMainWindow):
                 for f in files:
                     if f.lower().endswith(".pdf"):
                         paths.append(os.path.join(root, f))
+            # Chọn thư mục mới sẽ thay thế đợt cũ nếu đợt cũ đã chạy xong
+            if self.batch_completed:
+                self._on_clear_files()
+                self.batch_completed = False
             self._add_files_to_list(paths)
 
     def _add_files_to_list(self, new_paths: List[str]):
+        if self.batch_completed:
+            self._on_clear_files()
+            self.batch_completed = False
+
         added_count = 0
         for path in new_paths:
             abs_path = os.path.abspath(path)
@@ -259,7 +271,7 @@ class MainWindow(QMainWindow):
                 if len(self.file_list) >= self.MAX_FILES:
                     QMessageBox.warning(
                         self, "Giới hạn số lượng",
-                        f"Ứng dụng đang hỗ trợ tối đa {self.MAX_FILES} file trong 1 đợt quét.\n"
+                        f"Mỗi đợt quét hỗ trợ tối đa {self.MAX_FILES} file PDF.\n"
                         f"Đã bỏ qua các file vượt quá giới hạn."
                     )
                     break
@@ -439,6 +451,7 @@ class MainWindow(QMainWindow):
         self.log_box.append(html)
 
     def _on_batch_finished(self, success_count: int, failed_count: int, report_path: str):
+        self.batch_completed = True
         self.btn_start.setEnabled(True)
         self.btn_pause.setEnabled(False)
         self.btn_cancel.setEnabled(False)
