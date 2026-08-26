@@ -27,24 +27,43 @@ class SerialOCREngine:
         self._check_available_engines()
 
     def _check_available_engines(self):
-        """Kiểm tra các engine OCR khả dụng trên hệ thống (Hỗ trợ tự tìm đường dẫn trên Windows & macOS)."""
+        """Kiểm tra các engine OCR khả dụng trên hệ thống (Hỗ trợ nhúng tesseract bên trong exe trên Windows)."""
         try:
             import pytesseract
-            # Trên Windows, nếu pytesseract chưa nhận biến môi trường, tự tìm đường dẫn mặc định
+            import sys
+
+            # 1. Kiểm tra nếu đang chạy bên trong PyInstaller bundle (sys._MEIPASS)
+            if getattr(sys, 'frozen', False):
+                base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+                bundled_tess = os.path.join(base_dir, 'tesseract_engine', 'tesseract.exe')
+                bundled_tessdata = os.path.join(base_dir, 'tesseract_engine', 'tessdata')
+                if os.path.exists(bundled_tess):
+                    pytesseract.pytesseract.tesseract_cmd = bundled_tess
+                    os.environ['TESSDATA_PREFIX'] = bundled_tessdata
+                    self.tesseract_available = True
+                    return
+
+            # 2. Trên Windows: Kiểm tra các thư mục portable và cài đặt phổ biến
             if os.name == 'nt' and not shutil.which('tesseract'):
+                exe_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
                 common_win_paths = [
+                    os.path.join(exe_dir, 'tesseract_engine', 'tesseract.exe'),
+                    os.path.join(exe_dir, 'Tesseract-OCR', 'tesseract.exe'),
                     r'C:\Program Files\Tesseract-OCR\tesseract.exe',
                     r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-                    os.path.join(os.getcwd(), 'Tesseract-OCR', 'tesseract.exe')
+                    os.path.expandvars(r'%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe')
                 ]
                 for p in common_win_paths:
                     if os.path.exists(p):
                         pytesseract.pytesseract.tesseract_cmd = p
+                        tessdata_dir = os.path.join(os.path.dirname(p), 'tessdata')
+                        if os.path.exists(tessdata_dir):
+                            os.environ['TESSDATA_PREFIX'] = tessdata_dir
                         break
 
             pytesseract.get_tesseract_version()
             self.tesseract_available = True
-        except Exception:
+        except Exception as e:
             self.tesseract_available = False
 
     def _get_easyocr_reader(self):

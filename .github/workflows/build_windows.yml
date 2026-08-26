@@ -19,15 +19,24 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
 
-    - name: Install dependencies
+    - name: Install Tesseract OCR on Windows Runner
+      run: |
+        choco install tesseract --no-progress
+        echo "TESSERACT_PATH=C:\Program Files\Tesseract-OCR" >> $env:GITHUB_ENV
+
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Build Standalone EXE with PyInstaller
+    - name: Build Standalone EXE with Embedded Tesseract
       run: |
-        pyinstaller --noconfirm --onefile --windowed --name "PDFSerialRenamer" --add-data "ui/style.qss;ui" main.py
+        pyinstaller --noconfirm --onefile --windowed `
+          --name "PDFSerialRenamer" `
+          --add-data "ui/style.qss;ui" `
+          --add-data "C:\Program Files\Tesseract-OCR;tesseract_engine" `
+          main.py
 
     - name: Upload Windows Executable Artifact
       uses: actions/upload-artifact@v4

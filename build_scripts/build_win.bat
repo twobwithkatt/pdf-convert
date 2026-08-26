@@ -16,9 +16,17 @@ if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 
 echo ⚙️ Đang đóng gói với PyInstaller...
+
+set TESS_DATA_PARAM=
+if exist "C:\Program Files\Tesseract-OCR\tesseract.exe" (
+    echo [OK] Phat hien Tesseract OCR tai C:\Program Files\Tesseract-OCR, dang nhung truc tiep vao file EXE...
+    set TESS_DATA_PARAM=--add-data "C:\Program Files\Tesseract-OCR;tesseract_engine"
+)
+
 pyinstaller --noconfirm --onedir --windowed ^
     --name "PDFSerialRenamer" ^
     --add-data "ui/style.qss;ui" ^
+    %TESS_DATA_PARAM% ^
     main.py
 
 echo ✅ Build thành công! Ứng dụng nằm tại: dist\PDFSerialRenamer\PDFSerialRenamer.exe

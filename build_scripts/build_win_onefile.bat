@@ -26,9 +26,17 @@ if exist dist rmdir /s /q dist
 
 REM 4. Thuc thi dong goi Onefile
 echo [3/3] Dang dong goi file EXE doc lap...
+
+set TESS_DATA_PARAM=
+if exist "C:\Program Files\Tesseract-OCR\tesseract.exe" (
+    echo [OK] Phat hien Tesseract OCR tai C:\Program Files\Tesseract-OCR, dang nhung truc tiep vao file EXE...
+    set TESS_DATA_PARAM=--add-data "C:\Program Files\Tesseract-OCR;tesseract_engine"
+)
+
 pyinstaller --noconfirm --onefile --windowed ^
     --name "PDFSerialRenamer" ^
     --add-data "ui/style.qss;ui" ^
+    %TESS_DATA_PARAM% ^
     main.py
 
 echo.
