@@ -99,10 +99,12 @@ class SerialOCREngine:
 
         h, w = img_bgr.shape[:2]
         
-        # Danh sách các vùng trọng tâm theo thứ tự xác suất cao nhất
+        # Danh sách các vùng trọng tâm theo thứ tự xác suất cao nhất của các mẫu phôi sổ
         regions = [
-            ("top_right", img_bgr[0:int(h * 0.4), int(w * 0.6):w]),
-            ("bottom_right", img_bgr[int(h * 0.6):h, int(w * 0.6):w]),
+            ("bottom_right", img_bgr[int(h * 0.65):h, int(w * 0.65):w]), # Mẫu phôi ngang (BS 208780, BH 343597)
+            ("top_right", img_bgr[0:int(h * 0.4), int(w * 0.65):w]),     # Mẫu phôi dọc xoay (BH 807694)
+            ("bottom_right_wide", img_bgr[int(h * 0.5):h, int(w * 0.5):w]),
+            ("top_right_wide", img_bgr[0:int(h * 0.5), int(w * 0.5):w]),
             ("top_left", img_bgr[0:int(h * 0.4), 0:int(w * 0.4)]),
             ("bottom_left", img_bgr[int(h * 0.6):h, 0:int(w * 0.4)])
         ]
@@ -115,7 +117,8 @@ class SerialOCREngine:
             _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
             for img_variant in [gray, thresh]:
-                for angle in [90, 270, 0, 180]:
+                # Thử góc 0 (chữ ngang) và góc 90 (chữ dọc) trước tiên vì chiếm 99% trường hợp
+                for angle in [0, 90, 270, 180]:
                     if angle == 90:
                         rotated = cv2.rotate(img_variant, cv2.ROTATE_90_CLOCKWISE)
                     elif angle == 270:
