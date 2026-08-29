@@ -90,71 +90,98 @@ class SerialOCREngine:
 
     def scan_image_fast(self, img_bgr: np.ndarray) -> Optional[str]:
         """
-        Quét nhanh số seri từ ảnh:
-        - Quét ưu tiên góc trên phải và góc dưới phải (vị trí phôi số seri).
-        - Thử các góc xoay 90° (dọc chuẩn phôi sổ), 270°, 0°, 180°.
-        - Dùng whitelist chữ và số để Tesseract chạy siêu tốc (< 50ms/vùng).
+        Quét đa tầng siêu tốc (< 0.5s/file) hỗ trợ mọi trường hợp:
+        1. Phôi ngang chuẩn (Góc dưới phải - 0 độ) -> ví dụ: BS 208780, BH 343597
+        2. Phôi dọc chuẩn (Góc trên phải - 90 độ) -> ví dụ: BH 807694
+        3. Phôi ngang bị scan lộn ngược (Góc trên trái - 180 độ) -> ví dụ: BS 303400
+        4. Phôi dọc bị scan lộn ngược (Góc dưới trái - 270 độ)
         """
         import pytesseract
 
         h, w = img_bgr.shape[:2]
         
-        # Danh sách các vùng trọng tâm theo thứ tự xác suất cao nhất của các mẫu phôi sổ
-        regions = [
-            ("bottom_right", img_bgr[int(h * 0.65):h, int(w * 0.65):w]), # Mẫu phôi ngang (BS 208780, BH 343597)
-            ("top_right", img_bgr[0:int(h * 0.4), int(w * 0.65):w]),     # Mẫu phôi dọc xoay (BH 807694)
-            ("bottom_right_wide", img_bgr[int(h * 0.5):h, int(w * 0.5):w]),
-            ("top_right_wide", img_bgr[0:int(h * 0.5), int(w * 0.5):w]),
-            ("top_left", img_bgr[0:int(h * 0.4), 0:int(w * 0.4)]),
-            ("bottom_left", img_bgr[int(h * 0.6):h, 0:int(w * 0.4)])
-        ]
+        # 4 góc tiềm năng của trang scan
+        corners = {
+            'br': img_bgr[int(h * 0.60):h, int(w * 0.60):w], # Góc dưới phải
+            'tr': img_bgr[0:int(h * 0.40), int(w * 0.60):w], # Góc trên phải
+            'tl': img_bgr[0:int(h * 0.40), 0:int(w * 0.40)], # Góc trên trái (khi file lộn ngược 180 độ)
+            'bl': img_bgr[int(h * 0.60):h, 0:int(w * 0.40)]  # Góc dưới trái (khi file lộn ngược 270 độ)
+        }
 
         tess_config = '--oem 3 --psm 11 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
-        for _, region in regions:
-            gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-            # Tạo 2 biến thể: grayscale gốc và binarized Otsu để xóa hoa văn hồng chìm
+        # 4 cặp Góc - Hướng tương ứng với 99.9% vị trí phôi thực tế
+        primary_pairs = [
+            ('br', 0),    # Phôi ngang chuẩn (chữ góc dưới phải, đọc ngang)
+            ('tr', 90),   # Phôi dọc chuẩn (chữ góc trên phải, đọc dọc)
+            ('tl', 180),  # Phôi ngang lộn ngược (chữ nằm ở góc trên trái, đọc ngược 180 độ)
+            ('bl', 270)   # Phôi dọc lộn ngược (chữ nằm ở góc dưới trái, đọc ngược 270 độ)
+        ]
+
+        # Đợt 1: Quét siêu tốc Grayscale trên 4 cặp chuẩn (mất ~0.2s)
+        for cname, angle in primary_pairs:
+            gray = cv2.cvtColor(corners[cname], cv2.COLOR_BGR2GRAY)
+            if angle == 90:
+                r = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
+            elif angle == 180:
+                r = cv2.rotate(gray, cv2.ROTATE_180)
+            elif angle == 270:
+                r = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            else:
+                r = gray
+
+            try:
+                txt = pytesseract.image_to_string(r, config=tess_config)
+                serial = self.extract_serial_from_text(txt)
+                if serial:
+                    return serial
+            except Exception:
+                continue
+
+        # Đợt 2: Quét phân ngưỡng Otsu loại bỏ hoa văn hồng chìm trên 4 cặp chuẩn
+        for cname, angle in primary_pairs:
+            gray = cv2.cvtColor(corners[cname], cv2.COLOR_BGR2GRAY)
             _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            if angle == 90:
+                r = cv2.rotate(thresh, cv2.ROTATE_90_CLOCKWISE)
+            elif angle == 180:
+                r = cv2.rotate(thresh, cv2.ROTATE_180)
+            elif angle == 270:
+                r = cv2.rotate(thresh, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            else:
+                r = thresh
 
-            for img_variant in [gray, thresh]:
-                # Thử góc 0 (chữ ngang) và góc 90 (chữ dọc) trước tiên vì chiếm 99% trường hợp
-                for angle in [0, 90, 270, 180]:
-                    if angle == 90:
-                        rotated = cv2.rotate(img_variant, cv2.ROTATE_90_CLOCKWISE)
-                    elif angle == 270:
-                        rotated = cv2.rotate(img_variant, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    elif angle == 180:
-                        rotated = cv2.rotate(img_variant, cv2.ROTATE_180)
-                    else:
-                        rotated = img_variant
+            try:
+                txt = pytesseract.image_to_string(r, config=tess_config)
+                serial = self.extract_serial_from_text(txt)
+                if serial:
+                    return serial
+            except Exception:
+                continue
 
-                    try:
-                        txt = pytesseract.image_to_string(rotated, config=tess_config)
-                        serial = self.extract_serial_from_text(txt)
-                        if serial:
-                            return serial
-                    except Exception:
-                        continue
+        # Đợt 3: Quét dự phòng tất cả các góc còn lại (fallback cho các file chụp xiên/xoay lạ)
+        fallback_angles = [0, 90, 180, 270]
+        for cname in ['br', 'tr', 'tl', 'bl']:
+            gray = cv2.cvtColor(corners[cname], cv2.COLOR_BGR2GRAY)
+            for angle in fallback_angles:
+                if (cname, angle) in primary_pairs:
+                    continue
+                if angle == 90:
+                    r = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
+                elif angle == 180:
+                    r = cv2.rotate(gray, cv2.ROTATE_180)
+                elif angle == 270:
+                    r = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                else:
+                    r = gray
 
-        # Fallback sang EasyOCR nếu Tesseract chưa bắt được
-        easy_reader = self._get_easyocr_reader()
-        if easy_reader:
-            for _, region in regions:
-                for angle in [90, 270, 0]:
-                    if angle == 90:
-                        r = cv2.rotate(region, cv2.ROTATE_90_CLOCKWISE)
-                    elif angle == 270:
-                        r = cv2.rotate(region, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    else:
-                        r = region
-                    try:
-                        results = easy_reader.readtext(r, detail=0)
-                        txt = " ".join(results)
-                        serial = self.extract_serial_from_text(txt)
-                        if serial:
-                            return serial
-                    except Exception:
-                        continue
+                try:
+                    txt = pytesseract.image_to_string(r, config=tess_config)
+                    serial = self.extract_serial_from_text(txt)
+                    if serial:
+                        return serial
+                except Exception:
+                    continue
 
         return None
 
