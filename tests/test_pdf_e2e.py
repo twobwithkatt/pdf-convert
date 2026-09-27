@@ -99,13 +99,15 @@ class TestPDFEndToEnd(unittest.TestCase):
 
     def test_raster_certificate_cover_is_scanned_beyond_page_one(self):
         sample_pdf_path = os.path.join(self.test_dir, "ho_so_scan.pdf")
+        spread_image = np.full((800, 1200, 3), (255, 255, 255), dtype=np.uint8)
         cover_image = np.full((800, 600, 3), (230, 220, 255), dtype=np.uint8)
         cv2.rectangle(cover_image, (2, 2), (597, 797), (0, 0, 255), thickness=5)
-        _, image_bytes = cv2.imencode(".png", cover_image)
+        spread_image[:, 600:] = cover_image
+        _, image_bytes = cv2.imencode(".png", spread_image)
 
         doc = fitz.open()
         doc.new_page().insert_text((80, 100), "TRANG KHAC")
-        cover_page = doc.new_page(width=595, height=842)
+        cover_page = doc.new_page(width=842, height=595)
         cover_page.insert_image(cover_page.rect, stream=image_bytes.tobytes())
         doc.save(sample_pdf_path)
         doc.close()
@@ -114,7 +116,7 @@ class TestPDFEndToEnd(unittest.TestCase):
         engine.tesseract_available = True
         with patch(
             "pytesseract.image_to_string",
-            side_effect=["GIAY CHUNG NHAN QUYEN SU DUNG DAT", "BS 208130"],
+            side_effect=["GIAYCHUNGNHAN QUYENSUDUNGDAT", "BS 208130"],
         ):
             serial, note = engine.scan_pdf_file(sample_pdf_path)
 

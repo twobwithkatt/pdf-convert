@@ -166,7 +166,11 @@ class ScanWorker(QThread):
             elif not serial and is_success:
                 status = "Chưa nhận diện"
                 failed_count += 1
-                self.log_emitted.emit(f"⚠️ [{idx+1}/{total_files}] {filename} -> Không thấy số seri. Đã gom vào {target_name}", "warning")
+                reason = note or "Không thấy số seri"
+                self.log_emitted.emit(
+                    f"⚠️ [{idx+1}/{total_files}] {filename} -> {reason}. Đã gom vào {target_name}",
+                    "warning"
+                )
             else:
                 status = "Lỗi"
                 failed_count += 1

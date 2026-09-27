@@ -13,9 +13,9 @@ import numpy as np
 import fitz  # PyMuPDF
 from typing import Optional, Tuple, List
 
-# Biểu thức chính quy phát hiện số seri phôi: 2 chữ cái hoa + (khoảng trắng tùy chọn) + 6 chữ số
+# Biểu thức số seri: 2 chữ cái + 6 chữ số; OCR có thể chèn khoảng trắng giữa các nhóm số.
 # Ví dụ: BH 807694, BL123456, DA 998877, CM 443322
-SERIAL_REGEX = re.compile(r'\b([A-Z]{2})\s*([0-9]{6})\b', re.IGNORECASE)
+SERIAL_REGEX = re.compile(r'\b([A-Z]{2})\s*([0-9]{3}\s*[0-9]{3})\b', re.IGNORECASE)
 
 # Các tiền tố 2 chữ cái thường xuất hiện do nhiễu hoặc trích từ CMND/CCCD/Địa chỉ, cần loại trừ
 INVALID_PREFIXES = {
@@ -45,6 +45,13 @@ class SerialOCREngine:
                     os.environ['TESSDATA_PREFIX'] = bundled_tessdata
                     self.tesseract_available = True
                     return
+
+            # App macOS mở từ Finder thường không kế thừa PATH có thư mục Homebrew.
+            if sys.platform == 'darwin' and not shutil.which('tesseract'):
+                for mac_tess in ('/opt/homebrew/bin/tesseract', '/usr/local/bin/tesseract'):
+                    if os.path.exists(mac_tess):
+                        pytesseract.pytesseract.tesseract_cmd = mac_tess
+                        break
 
             # 2. Trên Windows: Kiểm tra các thư mục portable và cài đặt phổ biến
             if os.name == 'nt' and not shutil.which('tesseract'):
@@ -88,7 +95,8 @@ class SerialOCREngine:
         for prefix, digits in matches:
             prefix_upper = prefix.upper()
             if prefix_upper not in INVALID_PREFIXES:
-                return f"{prefix_upper} {digits}"
+                clean_digits = re.sub(r'\s+', '', digits)
+                return f"{prefix_upper} {clean_digits}"
         return None
 
     @staticmethod
@@ -101,8 +109,8 @@ class SerialOCREngine:
 
     def _is_land_certificate_cover_text(self, text: str) -> bool:
         """Nhận diện trang bìa Giấy chứng nhận quyền sử dụng đất qua tiêu đề."""
-        normalized = self._normalize_text(text)
-        return "GIAY CHUNG NHAN" in normalized and "QUYEN SU DUNG DAT" in normalized
+        normalized = self._normalize_text(text).replace(" ", "")
+        return "GIAYCHUNGNHAN" in normalized and "QUYENSUDUNGDAT" in normalized
 
     @staticmethod
     def _render_page_bgr(page, dpi: int) -> np.ndarray:
@@ -132,60 +140,68 @@ class SerialOCREngine:
         title_config = "--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         serial_config = "--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-        for angle in (0, 90, 180, 270):
-            if angle == 90:
-                oriented = cv2.rotate(img_bgr, cv2.ROTATE_90_CLOCKWISE)
-            elif angle == 180:
-                oriented = cv2.rotate(img_bgr, cv2.ROTATE_180)
-            elif angle == 270:
-                oriented = cv2.rotate(img_bgr, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            else:
-                oriented = img_bgr
+        height, width = img_bgr.shape[:2]
+        regions = [img_bgr]
+        if width > height * 1.2:
+            # Một số file scan cả hai mặt của sổ mở cạnh nhau; bìa GCN ở một nửa trang ngang.
+            split_at = width // 2
+            regions = [img_bgr[:, split_at:], img_bgr[:, :split_at], img_bgr]
 
-            height, width = oriented.shape[:2]
-            title_crop = oriented[int(height * 0.27):int(height * 0.53), int(width * 0.06):int(width * 0.94)]
-            if title_crop.size == 0:
-                continue
+        for region in regions:
+            for angle in (0, 90, 180, 270):
+                if angle == 90:
+                    oriented = cv2.rotate(region, cv2.ROTATE_90_CLOCKWISE)
+                elif angle == 180:
+                    oriented = cv2.rotate(region, cv2.ROTATE_180)
+                elif angle == 270:
+                    oriented = cv2.rotate(region, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                else:
+                    oriented = region
 
-            title_gray = cv2.cvtColor(title_crop, cv2.COLOR_BGR2GRAY)
-            title_gray = cv2.resize(title_gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-            _, title_binary = cv2.threshold(title_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-            title_found = False
-            for title_image in (title_gray, title_binary):
-                try:
-                    title_text = pytesseract.image_to_string(title_image, config=title_config)
-                except Exception:
+                height, width = oriented.shape[:2]
+                title_crop = oriented[int(height * 0.27):int(height * 0.53), int(width * 0.06):int(width * 0.94)]
+                if title_crop.size == 0:
                     continue
-                if self._is_land_certificate_cover_text(title_text):
-                    title_found = True
-                    break
 
-            if not title_found:
-                continue
+                title_gray = cv2.cvtColor(title_crop, cv2.COLOR_BGR2GRAY)
+                title_gray = cv2.resize(title_gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+                _, title_binary = cv2.threshold(title_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            # Seri của mẫu bìa này nằm ở góc dưới bên phải.
-            serial_crop = oriented[int(height * 0.79):int(height * 0.99), int(width * 0.62):width]
-            if serial_crop.size:
-                serial_gray = cv2.cvtColor(serial_crop, cv2.COLOR_BGR2GRAY)
-                serial_gray = cv2.resize(serial_gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-                _, serial_binary = cv2.threshold(serial_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                for serial_image in (serial_gray, serial_binary):
+                title_found = False
+                for title_image in (title_gray, title_binary):
                     try:
-                        serial_text = pytesseract.image_to_string(serial_image, config=serial_config)
+                        title_text = pytesseract.image_to_string(title_image, config=title_config)
                     except Exception:
                         continue
-                    serial = self.extract_serial_from_text(serial_text)
+                    if self._is_land_certificate_cover_text(title_text):
+                        title_found = True
+                        break
+
+                if not title_found:
+                    continue
+
+                # Seri của bìa dọc nằm ở góc dưới bên phải của trang hoặc nửa trang.
+                serial_crop = oriented[int(height * 0.79):int(height * 0.99), int(width * 0.62):width]
+                if serial_crop.size:
+                    serial_gray = cv2.cvtColor(serial_crop, cv2.COLOR_BGR2GRAY)
+                    serial_gray = cv2.resize(serial_gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+                    _, serial_binary = cv2.threshold(serial_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                    for serial_image in (serial_gray, serial_binary):
+                        try:
+                            serial_text = pytesseract.image_to_string(serial_image, config=serial_config)
+                        except Exception:
+                            continue
+                        serial = self.extract_serial_from_text(serial_text)
+                        if serial:
+                            return serial
+
+                # Dự phòng cho bản scan bị lệch: quét lại các góc như luồng seri cũ.
+                try:
+                    serial = self.scan_image_fast(oriented)
                     if serial:
                         return serial
-
-            # Dự phòng cho bản scan bị lệch: quét lại các góc như luồng seri cũ.
-            try:
-                serial = self.scan_image_fast(oriented)
-                if serial:
-                    return serial
-            except Exception:
-                continue
+                except Exception:
+                    continue
 
         return None
 
@@ -305,12 +321,15 @@ class SerialOCREngine:
 
             first_text_serial = None
             last_text_serial = None
+            has_image_only_pages = False
 
             # Ưu tiên bìa GCN ở bất kỳ vị trí nào. Kiểm tra text layer trước vì rất nhanh.
             for page_idx in range(len(doc)):
                 page = doc[page_idx]
                 page_text = page.get_text("text")
                 is_cover_text = self._is_land_certificate_cover_text(page_text)
+                if not page_text.strip() and page.get_images(full=True):
+                    has_image_only_pages = True
 
                 if page_idx == 0:
                     first_text_serial = self.extract_serial_from_text(page_text)
@@ -349,6 +368,9 @@ class SerialOCREngine:
             for page_idx, text_serial in ((0, first_text_serial), (len(doc) - 1, last_text_serial)):
                 if text_serial:
                     return text_serial, "Tìm thấy từ Text Layer"
+
+            if has_image_only_pages and not self.tesseract_available:
+                return None, "PDF scan ảnh; cần cài Tesseract OCR để nhận diện số seri"
 
             if self.tesseract_available:
                 legacy_pages = [(0, "OCR Trang 1 thành công")]

@@ -25,6 +25,7 @@ class TestPDFProcessing(unittest.TestCase):
         test_cases = [
             ("CỘNG HÒA XÃ HỘI... BH 807694 ...", "BH 807694"),
             ("Số vào sổ cấp GCN: BH807694", "BH 807694"),
+            ("Số seri: DE 825 476", "DE 825476"),
             ("DA 123456", "DA 123456"),
             ("bl 987654", "BL 987654"),
             ("Không có số seri ở đây 12345678", None),
