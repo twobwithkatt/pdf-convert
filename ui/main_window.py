@@ -94,8 +94,10 @@ class MainWindow(QMainWindow):
 
         # ---------------- MIDDLE PANEL: Cấu hình an toàn ----------------
         config_group = QGroupBox("⚙️ 2. Mẫu tên file & Chế độ bảo vệ an toàn")
-        config_layout = QHBoxLayout(config_group)
-        config_layout.setSpacing(16)
+        config_layout = QVBoxLayout(config_group)
+        config_layout.setSpacing(8)
+        naming_row = QHBoxLayout()
+        options_row = QHBoxLayout()
 
         lbl_naming = QLabel("Mẫu tên file mới:")
         lbl_naming.setStyleSheet("font-weight: 600;")
@@ -111,11 +113,20 @@ class MainWindow(QMainWindow):
         self.chk_csv_report = QCheckBox("Tự động xuất báo cáo đối soát CSV")
         self.chk_csv_report.setChecked(True)
 
-        config_layout.addWidget(lbl_naming)
-        config_layout.addWidget(self.cbo_naming)
-        config_layout.addWidget(self.chk_unrecognized)
-        config_layout.addWidget(self.chk_csv_report)
-        config_layout.addStretch()
+        self.chk_split_certificate = QCheckBox("Tách GCN (bìa + trang kế tiếp) thành PDF riêng")
+        self.chk_split_certificate.setToolTip(
+            "Giữ PDF đầy đủ đã đổi tên và tạo thêm một PDF gồm trang bìa GCN cùng trang ngay sau nó."
+        )
+
+        naming_row.addWidget(lbl_naming)
+        naming_row.addWidget(self.cbo_naming)
+        naming_row.addStretch()
+        options_row.addWidget(self.chk_unrecognized)
+        options_row.addWidget(self.chk_csv_report)
+        options_row.addWidget(self.chk_split_certificate)
+        options_row.addStretch()
+        config_layout.addLayout(naming_row)
+        config_layout.addLayout(options_row)
 
         main_layout.addWidget(config_group)
 
@@ -358,6 +369,7 @@ class MainWindow(QMainWindow):
             naming_template=self.cbo_naming.currentData(),
             separate_unrecognized=self.chk_unrecognized.isChecked(),
             export_csv=self.chk_csv_report.isChecked(),
+            split_certificate=self.chk_split_certificate.isChecked(),
             parent=self
         )
 

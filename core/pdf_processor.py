@@ -10,6 +10,7 @@ import os
 import shutil
 import csv
 import datetime
+import fitz
 from typing import Dict, Any, List, Optional, Tuple
 
 class NamingTemplate:
@@ -66,6 +67,10 @@ class SafePDFProcessor:
                 base_name = f"{clean_serial}.pdf"
 
         base_name = self.sanitize_filename(base_name)
+        return self._reserve_unique_filename(base_name)
+
+    def _reserve_unique_filename(self, base_name: str) -> str:
+        """Đặt trước một tên file chưa được dùng trong thư mục xuất."""
         target_stem, ext = os.path.splitext(base_name)
 
         # Chống trùng lặp (Duplicate resolution)
@@ -77,6 +82,51 @@ class SafePDFProcessor:
 
         self.used_filenames.add(final_name.lower())
         return final_name
+
+    def extract_certificate_pages(
+        self,
+        original_path: str,
+        serial: str,
+        page_indices: List[int],
+    ) -> Tuple[bool, str, str]:
+        """Tạo PDF riêng từ các trang GCN liên tiếp, không thay đổi file nguồn."""
+        if not os.path.exists(original_path):
+            return False, "", "File gốc không tồn tại"
+
+        source = None
+        extracted = None
+        target_path = ""
+        try:
+            source = fitz.open(original_path)
+            valid_indices = sorted({
+                index for index in page_indices
+                if isinstance(index, int) and 0 <= index < len(source)
+            })
+            if not valid_indices:
+                return False, "", "Không có trang Giấy chứng nhận để tách"
+
+            safe_filename = self._reserve_unique_filename(
+                self.sanitize_filename(f"{serial.strip().upper()} - Giấy chứng nhận.pdf")
+            )
+            target_path = os.path.join(self.output_dir, safe_filename)
+            extracted = fitz.open()
+            for page_index in valid_indices:
+                extracted.insert_pdf(source, from_page=page_index, to_page=page_index)
+            extracted.save(target_path)
+
+            return True, target_path, "Đã tách các trang Giấy chứng nhận"
+        except Exception as e:
+            if target_path and os.path.exists(target_path):
+                try:
+                    os.remove(target_path)
+                except OSError:
+                    pass
+            return False, "", f"Lỗi khi tách PDF: {str(e)}"
+        finally:
+            if extracted is not None:
+                extracted.close()
+            if source is not None:
+                source.close()
 
     def process_and_copy_file(self, original_path: str, serial: Optional[str]) -> Tuple[bool, str, str]:
         """

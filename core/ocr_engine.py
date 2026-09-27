@@ -1,11 +1,13 @@
 """
-Module nhận diện và trích xuất số seri phôi sổ đỏ/sổ hồng (Ví dụ: BH 807694).
-Tối ưu đa luồng, hỗ trợ xoay góc 0/90/180/270 độ, lọc nhiễu hoa văn bảo an chìm.
+Module nhận diện và trích xuất số seri phôi sổ đỏ/sổ hồng (Ví dụ: BH 807694)
+và bìa đỏ GCN trong PDF nhiều trang (Ví dụ: BS 208130).
+Hỗ trợ xoay góc 0/90/180/270 độ, lọc nhiễu hoa văn bảo an chìm.
 """
 
 import os
 import shutil
 import re
+import unicodedata
 import cv2
 import numpy as np
 import fitz  # PyMuPDF
@@ -24,6 +26,7 @@ class SerialOCREngine:
     def __init__(self):
         self.tesseract_available = False
         self.easyocr_reader = None
+        self.last_certificate_page_indices: List[int] = []
         self._check_available_engines()
 
     def _check_available_engines(self):
@@ -87,6 +90,110 @@ class SerialOCREngine:
             if prefix_upper not in INVALID_PREFIXES:
                 return f"{prefix_upper} {digits}"
         return None
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        """Chuẩn hóa chữ tiếng Việt để so khớp tiêu đề dù OCR bỏ dấu."""
+        normalized = unicodedata.normalize("NFD", text or "")
+        normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+        normalized = normalized.replace("Đ", "D").replace("đ", "d").upper()
+        return re.sub(r"[^A-Z0-9]+", " ", normalized).strip()
+
+    def _is_land_certificate_cover_text(self, text: str) -> bool:
+        """Nhận diện trang bìa Giấy chứng nhận quyền sử dụng đất qua tiêu đề."""
+        normalized = self._normalize_text(text)
+        return "GIAY CHUNG NHAN" in normalized and "QUYEN SU DUNG DAT" in normalized
+
+    @staticmethod
+    def _render_page_bgr(page, dpi: int) -> np.ndarray:
+        """Render trang PDF về ảnh BGR ba kênh để xử lý bằng OpenCV."""
+        pix = page.get_pixmap(dpi=dpi, colorspace=fitz.csRGB, alpha=False)
+        rgb = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
+        return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+    @staticmethod
+    def _looks_like_red_certificate_page(img_bgr: np.ndarray) -> bool:
+        """Lọc nhanh các trang có nền/hoa văn đỏ trước khi chạy OCR tiêu đề."""
+        hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+        hue = hsv[:, :, 0]
+        saturation = hsv[:, :, 1]
+        value = hsv[:, :, 2]
+        red_pixels = (
+            ((hue <= 12) | (hue >= 168))
+            & (saturation >= 25)
+            & (value >= 80)
+        )
+        return float(np.count_nonzero(red_pixels)) / red_pixels.size >= 0.015
+
+    def _scan_certificate_cover_image(self, img_bgr: np.ndarray) -> Optional[str]:
+        """Chỉ lấy seri sau khi OCR xác nhận trang bìa đỏ đúng tiêu đề chứng nhận."""
+        import pytesseract
+
+        title_config = "--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        serial_config = "--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+        for angle in (0, 90, 180, 270):
+            if angle == 90:
+                oriented = cv2.rotate(img_bgr, cv2.ROTATE_90_CLOCKWISE)
+            elif angle == 180:
+                oriented = cv2.rotate(img_bgr, cv2.ROTATE_180)
+            elif angle == 270:
+                oriented = cv2.rotate(img_bgr, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            else:
+                oriented = img_bgr
+
+            height, width = oriented.shape[:2]
+            title_crop = oriented[int(height * 0.27):int(height * 0.53), int(width * 0.06):int(width * 0.94)]
+            if title_crop.size == 0:
+                continue
+
+            title_gray = cv2.cvtColor(title_crop, cv2.COLOR_BGR2GRAY)
+            title_gray = cv2.resize(title_gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            _, title_binary = cv2.threshold(title_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+            title_found = False
+            for title_image in (title_gray, title_binary):
+                try:
+                    title_text = pytesseract.image_to_string(title_image, config=title_config)
+                except Exception:
+                    continue
+                if self._is_land_certificate_cover_text(title_text):
+                    title_found = True
+                    break
+
+            if not title_found:
+                continue
+
+            # Seri của mẫu bìa này nằm ở góc dưới bên phải.
+            serial_crop = oriented[int(height * 0.79):int(height * 0.99), int(width * 0.62):width]
+            if serial_crop.size:
+                serial_gray = cv2.cvtColor(serial_crop, cv2.COLOR_BGR2GRAY)
+                serial_gray = cv2.resize(serial_gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+                _, serial_binary = cv2.threshold(serial_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                for serial_image in (serial_gray, serial_binary):
+                    try:
+                        serial_text = pytesseract.image_to_string(serial_image, config=serial_config)
+                    except Exception:
+                        continue
+                    serial = self.extract_serial_from_text(serial_text)
+                    if serial:
+                        return serial
+
+            # Dự phòng cho bản scan bị lệch: quét lại các góc như luồng seri cũ.
+            try:
+                serial = self.scan_image_fast(oriented)
+                if serial:
+                    return serial
+            except Exception:
+                continue
+
+        return None
+
+    @staticmethod
+    def _collect_certificate_page_indices(doc, cover_page_idx: int) -> List[int]:
+        """Lấy trang bìa GCN và đúng một trang liền sau nó."""
+        last_page_idx = min(cover_page_idx + 1, len(doc) - 1)
+        return list(range(cover_page_idx, last_page_idx + 1))
 
     def scan_image_fast(self, img_bgr: np.ndarray) -> Optional[str]:
         """
@@ -187,61 +294,77 @@ class SerialOCREngine:
 
     def scan_pdf_file(self, pdf_path: str) -> Tuple[Optional[str], str]:
         """
-        Quét file PDF để tìm số seri:
-        1. Kiểm tra lớp text số (nếu file đã có text layer - 5ms).
-        2. Render trang 1 độ phân giải tối ưu (DPI 150-200) -> OCR siêu tốc.
-        3. Nếu trang 1 không có, thử trang cuối cùng (trang 4 của phôi sổ).
+        Quét PDF để tìm seri của phôi cũ ở trang đầu/cuối hoặc bìa đỏ GCN ở bất kỳ trang nào.
         """
+        doc = None
+        self.last_certificate_page_indices = []
         try:
             doc = fitz.open(pdf_path)
             if len(doc) == 0:
                 return None, "File PDF rỗng (0 trang)"
 
-            # Bước 1: Quét text layer nhanh (Digital text)
-            for page_idx in [0, len(doc) - 1]:
-                if page_idx < len(doc):
-                    page = doc[page_idx]
-                    page_text = page.get_text("text")
+            first_text_serial = None
+            last_text_serial = None
+
+            # Ưu tiên bìa GCN ở bất kỳ vị trí nào. Kiểm tra text layer trước vì rất nhanh.
+            for page_idx in range(len(doc)):
+                page = doc[page_idx]
+                page_text = page.get_text("text")
+                is_cover_text = self._is_land_certificate_cover_text(page_text)
+
+                if page_idx == 0:
+                    first_text_serial = self.extract_serial_from_text(page_text)
+                if page_idx == len(doc) - 1:
+                    last_text_serial = self.extract_serial_from_text(page_text)
+
+                if is_cover_text:
                     serial = self.extract_serial_from_text(page_text)
                     if serial:
-                        doc.close()
-                        return serial, "Tìm thấy từ Text Layer"
+                        self.last_certificate_page_indices = self._collect_certificate_page_indices(
+                            doc, page_idx
+                        )
+                        return serial, f"Tìm thấy từ Text Layer trang {page_idx + 1} (Giấy chứng nhận)"
+                    if self.tesseract_available:
+                        cover_img = self._render_page_bgr(page, 150)
+                        serial = self._scan_certificate_cover_image(cover_img)
+                        if serial:
+                            self.last_certificate_page_indices = self._collect_certificate_page_indices(
+                                doc, page_idx
+                            )
+                            return serial, f"OCR trang {page_idx + 1} (Giấy chứng nhận quyền sử dụng đất)"
 
-            # Bước 2: Render trang 1 sang ảnh (DPI 150 ~ cực kỳ rõ nét và tốc độ cao)
-            page_1 = doc[0]
-            pix_1 = page_1.get_pixmap(dpi=150)
-            
-            img_data = np.frombuffer(pix_1.samples, dtype=np.uint8).reshape(pix_1.height, pix_1.width, pix_1.n)
-            if pix_1.n == 4:
-                img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGBA2BGR)
-            else:
-                img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGB2BGR)
+                # Bản scan thường không có text layer. Thumbnail màu giúp chỉ OCR kỹ trang đỏ.
+                if self.tesseract_available and not is_cover_text:
+                    thumbnail = self._render_page_bgr(page, 50)
+                    if self._looks_like_red_certificate_page(thumbnail):
+                        cover_img = self._render_page_bgr(page, 150)
+                        serial = self._scan_certificate_cover_image(cover_img)
+                        if serial:
+                            self.last_certificate_page_indices = self._collect_certificate_page_indices(
+                                doc, page_idx
+                            )
+                            return serial, f"OCR trang {page_idx + 1} (Giấy chứng nhận quyền sử dụng đất)"
 
-            pix_1 = None  # Giải phóng bộ nhớ Pixmap
+            # Giữ tương thích với các phôi cũ vốn chỉ quét trang đầu và trang cuối.
+            for page_idx, text_serial in ((0, first_text_serial), (len(doc) - 1, last_text_serial)):
+                if text_serial:
+                    return text_serial, "Tìm thấy từ Text Layer"
 
-            serial = self.scan_image_fast(img_bgr)
-            if serial:
-                doc.close()
-                return serial, "OCR Trang 1 thành công"
+            if self.tesseract_available:
+                legacy_pages = [(0, "OCR Trang 1 thành công")]
+                if len(doc) > 1:
+                    legacy_pages.append((len(doc) - 1, "OCR Trang cuối thành công"))
 
-            # Bước 3: Nếu trang 1 chưa thấy và file có nhiều hơn 1 trang, thử trang cuối (Trang 4)
-            if len(doc) > 1:
-                page_last = doc[len(doc) - 1]
-                pix_last = page_last.get_pixmap(dpi=150)
-                img_data_last = np.frombuffer(pix_last.samples, dtype=np.uint8).reshape(pix_last.height, pix_last.width, pix_last.n)
-                if pix_last.n == 4:
-                    img_last_bgr = cv2.cvtColor(img_data_last, cv2.COLOR_RGBA2BGR)
-                else:
-                    img_last_bgr = cv2.cvtColor(img_data_last, cv2.COLOR_RGB2BGR)
-                pix_last = None
+                for page_idx, success_note in legacy_pages:
+                    img_bgr = self._render_page_bgr(doc[page_idx], 150)
+                    serial = self.scan_image_fast(img_bgr)
+                    if serial:
+                        return serial, success_note
 
-                serial = self.scan_image_fast(img_last_bgr)
-                if serial:
-                    doc.close()
-                    return serial, "OCR Trang cuối thành công"
-
-            doc.close()
             return None, "Không tìm thấy số seri"
 
         except Exception as e:
             return None, f"Lỗi đọc file: {str(e)}"
+        finally:
+            if doc is not None:
+                doc.close()

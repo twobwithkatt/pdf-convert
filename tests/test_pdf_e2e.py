@@ -7,6 +7,9 @@ import unittest
 import tempfile
 import shutil
 import fitz  # PyMuPDF
+import cv2
+import numpy as np
+from unittest.mock import patch
 
 from core.ocr_engine import SerialOCREngine
 from core.pdf_processor import SafePDFProcessor, NamingTemplate
@@ -53,6 +56,71 @@ class TestPDFEndToEnd(unittest.TestCase):
 
         # 4. Đảm bảo file gốc vẫn nguyên vẹn
         self.assertTrue(os.path.exists(sample_pdf_path))
+
+    def test_deep_certificate_cover_and_following_page_are_extracted(self):
+        sample_pdf_path = os.path.join(self.test_dir, "ho_so_nhieu_trang.pdf")
+        doc = fitz.open()
+
+        unrelated_before = doc.new_page()
+        unrelated_before.insert_text((80, 100), "GIAY TO DINH KEM")
+
+        cover = doc.new_page()
+        cover.insert_text((80, 100), "GIAY CHUNG NHAN QUYEN SU DUNG DAT", fontsize=16)
+        cover.insert_text((450, 790), "BS 208130", fontsize=14)
+
+        certificate_page_2 = doc.new_page()
+        certificate_page_2.insert_text((80, 100), "THUA DAT VA TAI SAN GAN LIEN VOI DAT", fontsize=14)
+
+        unrelated_after = doc.new_page()
+        unrelated_after.insert_text((80, 100), "HOP DONG VAY", fontsize=14)
+        doc.save(sample_pdf_path)
+        doc.close()
+
+        engine = SerialOCREngine()
+        serial, note = engine.scan_pdf_file(sample_pdf_path)
+        self.assertEqual(serial, "BS 208130")
+        self.assertEqual(engine.last_certificate_page_indices, [1, 2])
+        self.assertIn("trang 2", note)
+
+        processor = SafePDFProcessor(self.output_dir)
+        success, extracted_path, message = processor.extract_certificate_pages(
+            sample_pdf_path, serial, engine.last_certificate_page_indices
+        )
+        self.assertTrue(success, message)
+        self.assertEqual(os.path.basename(extracted_path), "BS 208130 - Giấy chứng nhận.pdf")
+
+        extracted = fitz.open(extracted_path)
+        self.assertEqual(len(extracted), 2)
+        extracted_text = " ".join(page.get_text("text") for page in extracted)
+        extracted.close()
+        self.assertIn("GIAY CHUNG NHAN", extracted_text)
+        self.assertIn("THUA DAT", extracted_text)
+        self.assertNotIn("HOP DONG VAY", extracted_text)
+
+    def test_raster_certificate_cover_is_scanned_beyond_page_one(self):
+        sample_pdf_path = os.path.join(self.test_dir, "ho_so_scan.pdf")
+        cover_image = np.full((800, 600, 3), (230, 220, 255), dtype=np.uint8)
+        cv2.rectangle(cover_image, (2, 2), (597, 797), (0, 0, 255), thickness=5)
+        _, image_bytes = cv2.imencode(".png", cover_image)
+
+        doc = fitz.open()
+        doc.new_page().insert_text((80, 100), "TRANG KHAC")
+        cover_page = doc.new_page(width=595, height=842)
+        cover_page.insert_image(cover_page.rect, stream=image_bytes.tobytes())
+        doc.save(sample_pdf_path)
+        doc.close()
+
+        engine = SerialOCREngine()
+        engine.tesseract_available = True
+        with patch(
+            "pytesseract.image_to_string",
+            side_effect=["GIAY CHUNG NHAN QUYEN SU DUNG DAT", "BS 208130"],
+        ):
+            serial, note = engine.scan_pdf_file(sample_pdf_path)
+
+        self.assertEqual(serial, "BS 208130")
+        self.assertEqual(engine.last_certificate_page_indices, [1])
+        self.assertIn("OCR trang 2", note)
 
 if __name__ == "__main__":
     unittest.main()

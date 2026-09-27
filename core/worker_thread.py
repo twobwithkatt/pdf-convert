@@ -24,13 +24,15 @@ class ScanWorker(QThread):
                  naming_template: str = NamingTemplate.ONLY_SERIAL,
                  separate_unrecognized: bool = True,
                  export_csv: bool = True,
-                 parent=None):
+                 parent=None,
+                 split_certificate: bool = False):
         super().__init__(parent)
         self.file_paths = file_paths
         self.output_dir = output_dir
         self.naming_template = naming_template
         self.separate_unrecognized = separate_unrecognized
         self.export_csv = export_csv
+        self.split_certificate = split_certificate
 
         self._is_cancelled = False
         self._is_paused = False
@@ -123,12 +125,44 @@ class ScanWorker(QThread):
             # 2. Xử lý copy an toàn và đổi tên
             is_success, target_path, copy_msg = pdf_processor.process_and_copy_file(file_path, serial)
             target_name = os.path.basename(target_path) if target_path else ""
+            result_note = note or copy_msg
+            certificate_name = ""
+            split_error = ""
+
+            if self.split_certificate and serial and is_success:
+                certificate_pages = ocr_engine.last_certificate_page_indices
+                if certificate_pages:
+                    split_success, certificate_path, split_msg = pdf_processor.extract_certificate_pages(
+                        file_path, serial, certificate_pages
+                    )
+                    if split_success:
+                        certificate_name = os.path.basename(certificate_path)
+                        result_note += f"; Đã tách {len(certificate_pages)} trang GCN thành {certificate_name}"
+                    else:
+                        split_error = split_msg
+                        result_note += f"; Không tách được GCN: {split_msg}"
+                else:
+                    split_error = "Không xác định được các trang GCN liên tiếp"
+                    result_note += f"; Không tách được GCN: {split_error}"
 
             # 3. Đánh giá trạng thái
             if serial and is_success:
                 status = "Thành công"
                 success_count += 1
-                self.log_emitted.emit(f"✅ [{idx+1}/{total_files}] {filename} -> {serial} (Lưu: {target_name})", "success")
+                if certificate_name:
+                    self.log_emitted.emit(
+                        f"✅ [{idx+1}/{total_files}] {filename} -> {serial} "
+                        f"(Lưu: {target_name}; GCN: {certificate_name})",
+                        "success"
+                    )
+                elif split_error:
+                    self.log_emitted.emit(
+                        f"⚠️ [{idx+1}/{total_files}] {filename} -> {serial} "
+                        f"(Lưu: {target_name}; {split_error})",
+                        "warning"
+                    )
+                else:
+                    self.log_emitted.emit(f"✅ [{idx+1}/{total_files}] {filename} -> {serial} (Lưu: {target_name})", "success")
             elif not serial and is_success:
                 status = "Chưa nhận diện"
                 failed_count += 1
@@ -146,12 +180,12 @@ class ScanWorker(QThread):
                 "output_name": target_name,
                 "output_path": target_path,
                 "status": status,
-                "note": note or copy_msg,
+                "note": result_note,
                 "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
 
             # Bắn tín hiệu cập nhật dòng trên bảng giao diện
-            self.file_completed.emit(idx, serial or "—", target_name, status, note or copy_msg)
+            self.file_completed.emit(idx, serial or "—", target_name, status, result_note)
 
             # Đo thời gian xử lý và giải phóng bộ nhớ RAM tức thời
             elapsed = time.time() - file_start
