@@ -35,6 +35,27 @@ class TestPDFProcessing(unittest.TestCase):
             res = engine.extract_serial_from_text(raw_text)
             self.assertEqual(res, expected, f"Thất bại với raw_text: {raw_text}")
 
+        self.assertTrue(
+            engine._is_land_certificate_cover_text(
+                "GIAY CHUNG NHAN QUYEN SU DUNG BAT"
+            )
+        )
+        self.assertTrue(
+            engine._is_land_certificate_cover_text(
+                "GIAYCHUNGNHAN QUYENSOHOUNHAOVATAISANKHACGANLIENVOIDAT"
+            )
+        )
+        self.assertTrue(
+            engine._is_land_certificate_cover_text(
+                "GIAYCHUNGNHAN QUYENSOHUUNHAOVATAISANKHACGANLIENVOIDAT"
+            )
+        )
+        self.assertTrue(
+            engine._is_land_certificate_cover_text(
+                "QUYENSOHOUNHAOVATAISANKHACGANLIENVOIBAT"
+            )
+        )
+
     def test_safe_naming_and_duplicate_resolution(self):
         processor = SafePDFProcessor(
             output_dir=self.output_dir,

@@ -113,9 +113,9 @@ class MainWindow(QMainWindow):
         self.chk_csv_report = QCheckBox("Tự động xuất báo cáo đối soát CSV")
         self.chk_csv_report.setChecked(True)
 
-        self.chk_split_certificate = QCheckBox("Tách GCN (bìa + trang kế tiếp) thành PDF riêng")
+        self.chk_split_certificate = QCheckBox("Tách từng GCN (bìa + trang kế tiếp) thành PDF riêng")
         self.chk_split_certificate.setToolTip(
-            "Giữ PDF đầy đủ đã đổi tên và tạo thêm một PDF gồm trang bìa GCN cùng trang ngay sau nó."
+            "Giữ PDF đầy đủ đã đổi tên và tạo một PDF riêng cho mỗi bìa GCN cùng trang ngay sau nó."
         )
 
         naming_row.addWidget(lbl_naming)

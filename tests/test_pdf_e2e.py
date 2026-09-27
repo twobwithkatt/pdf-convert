@@ -97,6 +97,53 @@ class TestPDFEndToEnd(unittest.TestCase):
         self.assertIn("THUA DAT", extracted_text)
         self.assertNotIn("HOP DONG VAY", extracted_text)
 
+    def test_multiple_certificates_are_scanned_and_split_individually(self):
+        sample_pdf_path = os.path.join(self.test_dir, "nhieu_gcn.pdf")
+        doc = fitz.open()
+
+        unrelated = doc.new_page()
+        unrelated.insert_text((80, 100), "TD 482014")
+
+        for serial, detail in (
+            ("BG 439167", "THUA DAT THU NHAT"),
+            ("BG 422508", "THUA DAT THU HAI"),
+            ("BG 422476", "THUA DAT THU BA"),
+        ):
+            cover = doc.new_page()
+            cover.insert_text((80, 100), "GIAY CHUNG NHAN QUYEN SU DUNG DAT", fontsize=16)
+            cover.insert_text((440, 790), serial, fontsize=14)
+            data_page = doc.new_page()
+            data_page.insert_text((80, 100), detail, fontsize=14)
+
+        doc.save(sample_pdf_path)
+        doc.close()
+
+        engine = SerialOCREngine()
+        serial, note = engine.scan_pdf_file(sample_pdf_path)
+        self.assertEqual(serial, "BG 439167")
+        self.assertEqual(
+            engine.last_certificate_groups,
+            [
+                ("BG 439167", [1, 2]),
+                ("BG 422508", [3, 4]),
+                ("BG 422476", [5, 6]),
+            ],
+        )
+        self.assertIn("3 GCN", note)
+
+        processor = SafePDFProcessor(self.output_dir)
+        extracted_page_counts = []
+        for certificate_serial, page_indices in engine.last_certificate_groups:
+            success, extracted_path, message = processor.extract_certificate_pages(
+                sample_pdf_path, certificate_serial, page_indices
+            )
+            self.assertTrue(success, message)
+            extracted = fitz.open(extracted_path)
+            extracted_page_counts.append(len(extracted))
+            extracted.close()
+
+        self.assertEqual(extracted_page_counts, [2, 2, 2])
+
     def test_raster_certificate_cover_is_scanned_beyond_page_one(self):
         sample_pdf_path = os.path.join(self.test_dir, "ho_so_scan.pdf")
         spread_image = np.full((800, 1200, 3), (255, 255, 255), dtype=np.uint8)

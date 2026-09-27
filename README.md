@@ -10,7 +10,7 @@
 - **Xử lý Batch mượt mà**: Chạy trên luồng Worker riêng (`QThread`), không làm đơ giao diện; tự động giải phóng RAM sau mỗi file.
 - **Nhận diện chính xác 100%**: Xử lý lọc hoa văn bảo an màu hồng chìm (Guilloche pattern) và tự động nhận diện chữ xoay dọc (0°, 90°, 180°, 270°).
 - **Hỗ trợ PDF nhiều trang**: Quét các trang để tìm bìa đỏ “Giấy chứng nhận quyền sử dụng đất”, sau đó đọc seri ở góc dưới phải (ví dụ: `BS 208130`).
-- **Tách GCN tùy chọn**: Có thể giữ PDF đầy đủ và tạo thêm một PDF gồm trang bìa GCN cùng một trang ngay sau nó.
+- **Tách GCN tùy chọn**: Giữ PDF đầy đủ và tạo một PDF riêng cho từng bìa GCN cùng trang ngay sau nó, kể cả khi một file có nhiều GCN.
 - **Tuyệt đối an toàn dữ liệu**:
   - Không sửa đổi hoặc ghi đè file gốc (`shutil.copy2`).
   - Tự động chống trùng tên (`BH 807694 (1).pdf`, `BH 807694 (2).pdf`).
@@ -22,7 +22,7 @@
 
 ## 🚀 Hướng Dẫn Cài Đặt & Chạy Trực Tiếp
 
-Các mẫu sổ đỏ/sổ hồng cũ vẫn được quét ở trang đầu hoặc trang cuối. Với PDF nhiều trang có bìa đỏ Giấy chứng nhận quyền sử dụng đất, ứng dụng dò trang bìa rồi dùng seri tìm được theo đúng mẫu đổi tên đã chọn. Bật “Tách GCN (bìa + trang kế tiếp) thành PDF riêng” để tạo thêm bản PDF gồm trang bìa và trang ngay sau đó.
+Các mẫu sổ đỏ/sổ hồng cũ vẫn được quét ở trang đầu hoặc trang cuối. Với PDF nhiều trang có bìa Giấy chứng nhận quyền sử dụng đất, ứng dụng dò trang bìa màu hoặc scan trắng đen rồi dùng seri tìm được theo đúng mẫu đổi tên đã chọn. Bật “Tách từng GCN (bìa + trang kế tiếp) thành PDF riêng” để giữ PDF đầy đủ và tạo một PDF riêng cho mỗi bìa cùng trang ngay sau nó.
 
 ### 1. Yêu cầu hệ thống
 - Python 3.9 trở lên

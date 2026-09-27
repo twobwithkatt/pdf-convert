@@ -126,40 +126,51 @@ class ScanWorker(QThread):
             is_success, target_path, copy_msg = pdf_processor.process_and_copy_file(file_path, serial)
             target_name = os.path.basename(target_path) if target_path else ""
             result_note = note or copy_msg
-            certificate_name = ""
-            split_error = ""
+            certificate_names = []
+            split_errors = []
 
             if self.split_certificate and serial and is_success:
-                certificate_pages = ocr_engine.last_certificate_page_indices
-                if certificate_pages:
-                    split_success, certificate_path, split_msg = pdf_processor.extract_certificate_pages(
-                        file_path, serial, certificate_pages
-                    )
-                    if split_success:
-                        certificate_name = os.path.basename(certificate_path)
-                        result_note += f"; Đã tách {len(certificate_pages)} trang GCN thành {certificate_name}"
-                    else:
-                        split_error = split_msg
-                        result_note += f"; Không tách được GCN: {split_msg}"
+                certificate_groups = ocr_engine.last_certificate_groups
+                if not certificate_groups and ocr_engine.last_certificate_page_indices:
+                    certificate_groups = [(serial, ocr_engine.last_certificate_page_indices)]
+
+                if certificate_groups:
+                    for certificate_serial, certificate_pages in certificate_groups:
+                        split_success, certificate_path, split_msg = pdf_processor.extract_certificate_pages(
+                            file_path, certificate_serial, certificate_pages
+                        )
+                        if split_success:
+                            certificate_names.append(os.path.basename(certificate_path))
+                        else:
+                            split_errors.append(split_msg)
+
+                    if certificate_names:
+                        result_note += (
+                            f"; Đã tách {len(certificate_names)} GCN thành: "
+                            f"{', '.join(certificate_names)}"
+                        )
+                    if split_errors:
+                        result_note += f"; Lỗi tách GCN: {'; '.join(split_errors)}"
                 else:
-                    split_error = "Không xác định được các trang GCN liên tiếp"
-                    result_note += f"; Không tách được GCN: {split_error}"
+                    split_errors.append("Không xác định được các trang GCN liên tiếp")
+                    result_note += f"; Không tách được GCN: {split_errors[-1]}"
 
             # 3. Đánh giá trạng thái
             if serial and is_success:
                 status = "Thành công"
                 success_count += 1
-                if certificate_name:
+                if split_errors:
+                    split_summary = f"Tách được: {', '.join(certificate_names)}; " if certificate_names else ""
                     self.log_emitted.emit(
                         f"✅ [{idx+1}/{total_files}] {filename} -> {serial} "
-                        f"(Lưu: {target_name}; GCN: {certificate_name})",
-                        "success"
-                    )
-                elif split_error:
-                    self.log_emitted.emit(
-                        f"⚠️ [{idx+1}/{total_files}] {filename} -> {serial} "
-                        f"(Lưu: {target_name}; {split_error})",
+                        f"(Lưu: {target_name}; {split_summary}Lỗi: {'; '.join(split_errors)})",
                         "warning"
+                    )
+                elif certificate_names:
+                    self.log_emitted.emit(
+                        f"✅ [{idx+1}/{total_files}] {filename} -> {serial} "
+                        f"(Lưu: {target_name}; GCN: {', '.join(certificate_names)})",
+                        "success"
                     )
                 else:
                     self.log_emitted.emit(f"✅ [{idx+1}/{total_files}] {filename} -> {serial} (Lưu: {target_name})", "success")

@@ -57,14 +57,12 @@ class TestRasterOCR(unittest.TestCase):
         doc.close()
         raster_doc.close()
 
-        # 3. Quét OCR
+        # 3. Quét OCR; khi có Tesseract thì phải giữ được luồng nhận seri phôi cũ.
         engine = SerialOCREngine()
-        # Kiểm tra nếu có OCR engine khả dụng
-        if engine.tesseract_available or engine.easyocr_reader is not None:
+        if engine.tesseract_available:
             serial, note = engine.scan_pdf_file(pdf_path)
             print(f"Kết quả OCR ảnh scan thuần: serial='{serial}', note='{note}'")
-            if serial:
-                self.assertEqual(serial, "BH 807694")
+            self.assertEqual(serial, "BH 807694")
         else:
             print("Tesseract/EasyOCR chưa được cài đặt binary trên máy hiện tại, đã chuẩn bị sẵn cơ chế fallback.")
 
