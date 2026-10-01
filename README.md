@@ -8,15 +8,16 @@
 
 - **Giao diện trực quan**: Hỗ trợ Kéo & Thả (Drag & Drop) cả file hoặc cả thư mục chứa file PDF.
 - **Xử lý Batch mượt mà**: Chạy trên luồng Worker riêng (`QThread`), không làm đơ giao diện; tự động giải phóng RAM sau mỗi file.
-- **Nhận diện chính xác 100%**: Xử lý lọc hoa văn bảo an màu hồng chìm (Guilloche pattern) và tự động nhận diện chữ xoay dọc (0°, 90°, 180°, 270°).
+- **Hỗ trợ nhận diện seri**: Xử lý lọc hoa văn bảo an màu hồng chìm (Guilloche pattern) và nhận diện chữ xoay dọc (0°, 90°, 180°, 270°); kết quả OCR cần được đối chiếu với bản gốc.
 - **Hỗ trợ PDF nhiều trang**: Quét các trang để tìm bìa đỏ “Giấy chứng nhận quyền sử dụng đất”, sau đó đọc seri ở góc dưới phải (ví dụ: `BS 208130`).
 - **Tách GCN tùy chọn**: Giữ PDF đầy đủ và tạo một PDF riêng cho từng bìa GCN cùng trang ngay sau nó, kể cả khi một file có nhiều GCN.
-- **Tuyệt đối an toàn dữ liệu**:
+- **Bảo vệ tệp gốc**:
   - Không sửa đổi hoặc ghi đè file gốc (`shutil.copy2`).
   - Tự động chống trùng tên (`BH 807694 (1).pdf`, `BH 807694 (2).pdf`).
   - Gom file không nhận diện được vào thư mục `_CHUA_NHAN_DIEN/`.
 - **Báo cáo đối soát CSV**: Xuất chi tiết danh sách file trước và sau khi đổi tên kèm thời gian xử lý.
-- **Đa nền tảng**: Hoạt động hoàn hảo trên **macOS** (Apple Silicon / Intel) và **Windows 10 / 11**.
+- **Đa nền tảng**: Hỗ trợ **macOS** (Apple Silicon / Intel) và **Windows 10 / 11**.
+- **Điều khoản và kích hoạt**: Hiển thị điều khoản mỗi lần mở; cần đồng ý và nhập một key chưa dùng. Mỗi key chỉ mở một phiên và được tính là đã dùng khi đóng ứng dụng.
 
 ---
 
@@ -46,6 +47,8 @@ pip install -r requirements.txt
 ```
 
 ### 3. Chạy ứng dụng
+Khi mở ứng dụng, người dùng cần đọc và đồng ý với điều khoản, sau đó nhập một trong 30 key được cấp. Trạng thái key được lưu cục bộ theo tài khoản người dùng trên máy này; key đã dùng không được dùng lại trên cùng trạng thái cài đặt. Nếu ứng dụng bị buộc thoát, key đang kích hoạt sẽ được tính là đã dùng ở lần mở kế tiếp.
+
 ```bash
 python main.py
 ```
