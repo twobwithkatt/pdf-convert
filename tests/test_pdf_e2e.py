@@ -144,6 +144,13 @@ class TestPDFEndToEnd(unittest.TestCase):
 
         self.assertEqual(extracted_page_counts, [2, 2, 2])
 
+    def test_faint_grayscale_certificate_pattern_passes_page_filter(self):
+        image = np.full((100, 100, 3), 255, dtype=np.uint8)
+        image[::2, :] = (243, 243, 243)
+        image[::10, :] = (210, 210, 210)
+
+        self.assertTrue(SerialOCREngine._looks_like_certificate_cover_page(image))
+
     def test_raster_certificate_cover_is_scanned_beyond_page_one(self):
         sample_pdf_path = os.path.join(self.test_dir, "ho_so_scan.pdf")
         spread_image = np.full((800, 1200, 3), (255, 255, 255), dtype=np.uint8)

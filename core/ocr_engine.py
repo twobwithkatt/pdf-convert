@@ -147,7 +147,7 @@ class SerialOCREngine:
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         patterned_ratio = float(np.count_nonzero(gray < 245)) / gray.size
         ink_ratio = float(np.count_nonzero(gray < 220)) / gray.size
-        return patterned_ratio >= 0.35 and ink_ratio >= 0.10
+        return patterned_ratio >= 0.40 and ink_ratio >= 0.075
 
     def _scan_certificate_cover_image(
         self, img_bgr: np.ndarray, detail_img_bgr: Optional[np.ndarray] = None
